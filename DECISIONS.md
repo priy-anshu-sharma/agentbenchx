@@ -444,3 +444,37 @@ Design for reproducibility through:
 - Essential for credibility in research community
 - Supports educational use and teaching experiments
 - Foundation for scientific validity of evaluation results
+
+## ADR 016: Execution Context for Agent Learning
+
+**Status**: Accepted  
+**Date**: 2026-08-19  
+
+### Context
+Agents need to learn from previous action results to adapt their behavior and complete tasks effectively. The original agent interface only provided minimal context (step number and trace ID), which prevented agents from seeing the outcomes of their previous actions. This caused agents to repeatedly request the same tools without adapting based on results.
+
+### Decision
+Implement a structured ExecutionContext model that provides agents with:
+- Run and task identification for correlation
+- Current step number for progress tracking
+- List of available tools for decision making
+- History of action executions including:
+  * Action ID (correlating with trace events)
+  * Tool name and arguments used
+  * Action result (success, output, error, execution time)
+  * Timestamp of execution
+- Metadata for extensibility
+
+The Agent.execute() method accepts this structured context instead of a minimal dictionary, enabling agents to:
+- See the results of their previous actions
+- Adapt their behavior based on outcomes (e.g., stop requesting tools after success)
+- Build more complex reasoning over multiple steps
+- Correlate actions with trace events for analysis
+
+### Consequences
+- Enables agents to learn from tool execution results
+- Supports complex multi-step reasoning and planning
+- Provides clear correlation between agent actions and trace events
+- Maintains backward compatibility through model_dump() conversion
+- Establishes foundation for advanced agent capabilities like memory and reflection
+- Slight increase in context passing overhead (negligible for typical use cases)

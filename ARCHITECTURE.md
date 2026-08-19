@@ -181,6 +181,7 @@ Future web interface for visualization and monitoring (planned).
 - Receives task prompts and environmental observations
 - Requests tool usage with parameters
 - Processes tool results and continues execution
+- Receives execution context containing history of previous actions and results
 - Terminates when task complete or limits reached
 - All actions must be traceable through standardized interface
 
