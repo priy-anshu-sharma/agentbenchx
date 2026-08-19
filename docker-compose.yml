@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: agentbenchx_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agentbenchx
+      POSTGRES_PASSWORD: agentbenchx_password
+      POSTGRES_DB: agentbenchx
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "agentbenchx"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./backend
+    container_name: agentbenchx_api
+    restart: unless-stopped
+    environment:
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+      - DATABASE_URL=postgresql://agentbenchx:agentbenchx_password@db:5432/agentbenchx
+      - SECRET_KEY=dev-secret-key-change-in-production
+    volumes:
+      - ./backend:/app
+      - ./backend/requirements:/app/requirements
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "python -m pip install -e . &&
+             alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  postgres_data:
