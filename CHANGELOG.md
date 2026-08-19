@@ -4,19 +4,21 @@ All notable changes to AgentBenchX will be documented in this file.
 
 ## [Unreleased]
 ### Added
-- Initial project structure and architecture
-- Foundational documentation (SPEC.md, ARCHITECTURE.md, ROADMAP.md, DEVELOPMENT.md, DECISIONS.md, SECURITY.md)
-- Core directory structure for all components
-- License, contribution guidelines, and code of conduct
-- README with project overview
-- CITATION.cff for proper attribution
+- Trace serialization functionality for Phase 2.3
+- Comprehensive serialization tests for Trace and TraceEvent models
+- Verified round-trip serialization preserves all data including UUIDs, timestamps, enums, and complex payloads
 
-## [0.1.0] - 2026-08-19
+## [0.2.1] - 2026-08-19
 ### Added
-- Initial repository setup with complete architectural foundation
-- All required documentation files
-- Directory structure matching specifications
-- Licensing and contribution guidelines
+- Trace serialization functionality for Phase 2.3
+  - Trace and TraceEvent models can be safely serialized to JSON and deserialized
+  - All information survives the round trip: trace ID, run ID, task ID, agent ID, timestamps, event IDs, event sequence numbers, event types, event payloads, event metadata, trace metadata
+  - Uses Pydantic's native serialization methods (model_dump_json, model_validate_json)
+  - Properly handles UUIDs, datetime values (with timezone preservation), enums, nested dictionaries, lists, and None/null values
+- Comprehensive serialization tests
+  - Tests for empty traces, multi-event traces, complex payloads, and invalid data
+  - Verifies invalid event types, missing required fields, and invalid UUIDs are properly rejected
+  - Confirms timezone information is preserved in datetime serialization
 
 ## [0.2.0] - 2026-08-19
 ### Added
@@ -42,3 +44,12 @@ All notable changes to AgentBenchX will be documented in this file.
 - ActionResult inconsistency between domain and environment modules
 - Orchestrator test failures due to agent not learning from tool results
 - Import issues in orchestrator service for ExecutionContext and ActionExecution models
+
+## [0.1.0] - 2026-08-19
+### Added
+- Initial repository setup with complete architectural foundation
+- All required documentation files
+- Directory structure matching specifications
+- Licensing and contribution guidelines
+- README with project overview
+- CITATION.cff for proper attribution
