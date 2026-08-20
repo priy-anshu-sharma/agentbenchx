@@ -1,11 +1,13 @@
 """SQLAlchemy implementation of trace repository."""
 
+from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from backend.app.domain.traces.models import Trace
+from backend.app.domain.traces.models import Trace, TraceEvent, TraceEventType
+from backend.app.domain.traces.query import TraceQuery
 from backend.app.domain.traces.repository.trace_repository import TraceRepository as AbstractTraceRepository
 from backend.app.infrastructure.database.models.trace import Trace as SQLTrace
 from backend.app.infrastructure.database.models.trace_event import TraceEvent as SQLTraceEvent
@@ -20,14 +22,16 @@ class SQLAlchemyTraceRepository(AbstractTraceRepository):
     def save(self, trace: Trace) -> Trace:
         """Save a trace and return the saved entity."""
         try:
+            import uuid
             # Convert domain model to SQLAlchemy model
+            # Note: domain model uses string IDs, SQLAlchemy model uses UUID objects
             db_trace = SQLTrace(
-                id=trace.id,
+                id=uuid.UUID(trace.id),
                 agent_id=trace.agent_id,
                 task_id=trace.task_id,
                 environment_id=trace.environment_id,
                 status=trace.status,
-                run_id=trace.run_id,
+                run_id=uuid.UUID(trace.run_id),
                 started_at=trace.started_at,
                 ended_at=trace.ended_at,
                 metadata_=trace.metadata,
@@ -43,7 +47,7 @@ class SQLAlchemyTraceRepository(AbstractTraceRepository):
                     trace_id=db_trace.id,
                     event_type=event.event_type.value if hasattr(event.event_type, 'value') else str(event.event_type),
                     sequence_number=event.sequence_number,
-                    timestamp=event.timestamp,
+                    timestamp=datetime.fromtimestamp(event.timestamp, tz=timezone.utc),
                     payload=event.payload,
                     metadata_=event.metadata,
                 )
@@ -76,10 +80,15 @@ class SQLAlchemyTraceRepository(AbstractTraceRepository):
 
         trace_events = []
         for db_event in db_trace_events:
+            # Handle both datetime objects (real DB) and floats (mocks)
+            if hasattr(db_event.timestamp, 'timestamp'):
+                timestamp = db_event.timestamp.timestamp()
+            else:
+                timestamp = db_event.timestamp
             trace_event = TraceEvent(
                 event_type=TraceEventType(db_event.event_type),
                 sequence_number=db_event.sequence_number,
-                timestamp=db_event.timestamp,
+                timestamp=timestamp,
                 payload=db_event.payload,
                 metadata=db_event.metadata_,
             )
@@ -146,10 +155,15 @@ class SQLAlchemyTraceRepository(AbstractTraceRepository):
 
         trace_events = []
         for db_event in db_trace_events:
+            # Handle both datetime objects (real DB) and floats (mocks)
+            if hasattr(db_event.timestamp, 'timestamp'):
+                timestamp = db_event.timestamp.timestamp()
+            else:
+                timestamp = db_event.timestamp
             trace_event = TraceEvent(
                 event_type=TraceEventType(db_event.event_type),
                 sequence_number=db_event.sequence_number,
-                timestamp=db_event.timestamp,
+                timestamp=timestamp,
                 payload=db_event.payload,
                 metadata=db_event.metadata_,
             )
@@ -174,3 +188,89 @@ class SQLAlchemyTraceRepository(AbstractTraceRepository):
     def get_by_trace_id(self, trace_id: UUID) -> Optional[Trace]:
         """Get a trace by trace ID (alias for get for clarity)."""
         return self.get(trace_id)
+
+    def query(self, query_params: TraceQuery) -> List[Trace]:
+        """Query traces with filtering and pagination."""
+        # Start with base query
+        query = self.session.query(SQLTrace)
+
+        # Apply filters
+        if query_params.run_id is not None:
+            query = query.filter(SQLTrace.run_id == query_params.run_id)
+
+        if query_params.task_id is not None:
+            query = query.filter(SQLTrace.task_id == query_params.task_id)
+
+        if query_params.agent_id is not None:
+            query = query.filter(SQLTrace.agent_id == query_params.agent_id)
+
+        if query_params.created_after is not None:
+            query = query.filter(SQLTrace.started_at >= query_params.created_after)
+
+        if query_params.created_before is not None:
+            query = query.filter(SQLTrace.started_at <= query_params.created_before)
+
+        # Apply event_type filter if specified
+        if query_params.event_type is not None:
+            # Join with trace events and filter by event_type
+            # Use exists() to avoid duplicate traces when a trace has multiple matching events
+            query = query.filter(
+                self.session.query(SQLTraceEvent).filter(
+                    SQLTraceEvent.trace_id == SQLTrace.id,
+                    SQLTraceEvent.event_type == query_params.event_type.value
+                ).exists()
+            )
+
+        # Apply ordering (deterministic: by created_at, then id)
+        query = query.order_by(SQLTrace.started_at.asc(), SQLTrace.id.asc())
+
+        # Apply pagination
+        if query_params.offset is not None:
+            query = query.offset(query_params.offset)
+        if query_params.limit is not None:
+            query = query.limit(query_params.limit)
+
+        # Execute query
+        db_traces = query.all()
+
+        # Convert SQLAlchemy models to domain models
+        traces = []
+        for db_trace in db_traces:
+            # Get trace events for each trace
+            db_trace_events = self.session.query(SQLTraceEvent).filter(
+                SQLTraceEvent.trace_id == db_trace.id
+            ).order_by(SQLTraceEvent.sequence_number.asc()).all()
+
+            # Convert trace events to domain models
+            trace_events = []
+            for db_event in db_trace_events:
+                # Handle both datetime objects (real DB) and floats (mocks)
+                if hasattr(db_event.timestamp, 'timestamp'):
+                    timestamp = db_event.timestamp.timestamp()
+                else:
+                    timestamp = db_event.timestamp
+                trace_event = TraceEvent(
+                    event_type=TraceEventType(db_event.event_type),
+                    sequence_number=db_event.sequence_number,
+                    timestamp=timestamp,
+                    payload=db_event.payload,
+                    metadata=db_event.metadata_,
+                )
+                trace_events.append(trace_event)
+
+            # Create trace domain model
+            trace = Trace(
+                id=str(db_trace.id),
+                agent_id=db_trace.agent_id,
+                task_id=db_trace.task_id,
+                environment_id=db_trace.environment_id,
+                status=db_trace.status,
+                run_id=str(db_trace.run_id),
+                started_at=db_trace.started_at,
+                ended_at=db_trace.ended_at,
+                metadata=db_trace.metadata_,
+            )
+            trace.events = trace_events
+            traces.append(trace)
+
+        return traces

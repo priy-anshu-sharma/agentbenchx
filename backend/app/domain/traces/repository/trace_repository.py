@@ -5,6 +5,7 @@ from typing import Optional, List
 from uuid import UUID
 
 from backend.app.domain.traces.models import Trace
+from backend.app.domain.traces.query import TraceQuery
 
 
 class TraceRepository(ABC):
@@ -38,4 +39,16 @@ class TraceRepository(ABC):
     @abstractmethod
     def get_by_trace_id(self, trace_id: UUID) -> Optional[Trace]:
         """Get a trace by trace ID (alias for get for clarity)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def query(self, query_params: TraceQuery) -> List[Trace]:
+        """Query traces with filtering and pagination.
+
+        Args:
+            query_params: TraceQuery object containing filter criteria and pagination options
+
+        Returns:
+            List of traces matching the query criteria
+        """
         raise NotImplementedError
